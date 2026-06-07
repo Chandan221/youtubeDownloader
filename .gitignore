@@ -16,3 +16,7 @@ build/
 # OS
 Thumbs.db
 .DS_Store
+
+# Temp files
+err.txt
+out.txt
