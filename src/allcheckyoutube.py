@@ -186,6 +186,7 @@ class YouTubeDownloaderApp:
         self.yt = None
         self.video_streams = []
         self.is_playlist = tk.BooleanVar(value=False)
+        self.audio_only = tk.BooleanVar(value=False)
 
         self.root.configure(bg=self.colors["bg"])
         self.set_icon()
@@ -345,6 +346,14 @@ class YouTubeDownloaderApp:
         self.theme_label.config(text="Dark" if theme_name == "dark" else "Light")
         self.apply_theme()
 
+    def _on_audio_only_toggle(self):
+        if self.audio_only.get():
+            self.quality_combo.set("Audio Only")
+            self.quality_combo.configure(state="disabled")
+        else:
+            self.quality_combo.configure(state="readonly")
+            self.quality_combo.set("")
+
     def build_section_card(self, parent, padding=16):
         card = self._make_card(parent,
             highlightbackground=self.colors["border"], highlightthickness=1)
@@ -402,6 +411,18 @@ class YouTubeDownloaderApp:
             relief="flat", bd=0, cursor="hand2",
             padx=8, pady=6)
         self.playlist_cb.pack(side="left")
+
+        self.audio_cb = tk.Checkbutton(row,
+            text="Audio only (MP3)", variable=self.audio_only,
+            command=self._on_audio_only_toggle,
+            font=font_spec(12),
+            bg=self.colors["card"], fg=self.colors["text"],
+            selectcolor=self.colors["input"],
+            activebackground=self.colors["card"],
+            activeforeground=self.colors["text"],
+            relief="flat", bd=0, cursor="hand2",
+            padx=8, pady=6)
+        self.audio_cb.pack(side="left", padx=(10, 0))
 
     def build_quality_row(self, parent):
         row = self._make_card(parent)
@@ -516,7 +537,7 @@ class YouTubeDownloaderApp:
             messagebox.showerror("Error", "Please enter a YouTube URL.")
             return
         try:
-            self.set_status("Fetching available qualities...")
+            self.set_status("Fetching information...")
             self.set_percent(0)
             self.progress["value"] = 0
 
@@ -528,6 +549,19 @@ class YouTubeDownloaderApp:
                 self.yt = YouTube(playlist.video_urls[0], on_progress_callback=self.on_progress)
             else:
                 self.yt = YouTube(url, on_progress_callback=self.on_progress)
+
+            if self.audio_only.get():
+                audio_stream = (self.yt.streams
+                    .filter(only_audio=True)
+                    .order_by("abr").desc().first())
+                if audio_stream is None:
+                    messagebox.showerror("Error", "No audio stream found.")
+                    return
+                size_mb = round(audio_stream.filesize / (1024 * 1024), 2)
+                self.quality_combo.set(f"Audio Only | {audio_stream.abr} | {size_mb} MB")
+                self.quality_combo.configure(state="disabled")
+                self.set_status(f"Audio info loaded for: {self.yt.title}", True)
+                return
 
             self.video_streams = (self.yt.streams
                 .filter(adaptive=True, only_video=True, file_extension="mp4")
@@ -548,6 +582,7 @@ class YouTubeDownloaderApp:
 
             self.quality_combo["values"] = quality_options
             self.quality_combo.current(0)
+            self.quality_combo.configure(state="readonly")
             self.set_status(f"Loaded {len(quality_options)} quality options for: {self.yt.title}", True)
 
         except Exception as e:
@@ -566,7 +601,7 @@ class YouTubeDownloaderApp:
             messagebox.showerror("Error", "Please enter a YouTube URL.")
             return
         selected_quality = self.get_selected_resolution()
-        if not selected_quality:
+        if not self.audio_only.get() and not selected_quality:
             messagebox.showerror("Error", "Please select a quality.")
             return
         thread = threading.Thread(target=self.download_task, args=(url, selected_quality), daemon=True)
@@ -582,7 +617,12 @@ class YouTubeDownloaderApp:
         self.progress["value"] = 0
         self.set_percent(0)
         try:
-            if self.is_playlist.get():
+            if self.audio_only.get():
+                if self.is_playlist.get():
+                    self.download_playlist_audio(url)
+                else:
+                    self.download_single_audio(url)
+            elif self.is_playlist.get():
                 self.download_playlist(url, selected_quality)
             else:
                 self.download_single_video(url, selected_quality)
@@ -657,6 +697,57 @@ class YouTubeDownloaderApp:
         for f in [temp_video, temp_audio]:
             if os.path.exists(f):
                 os.remove(f)
+
+    def download_single_audio(self, video_url):
+        yt = YouTube(video_url, on_progress_callback=self.on_progress)
+        self.log(f"Video: {yt.title}")
+        self.log("Mode: Audio only")
+        self._download_audio(yt, self.download_path)
+        self.progress["value"] = 100
+        self.set_percent(100)
+
+    def download_playlist_audio(self, playlist_url):
+        playlist = Playlist(playlist_url)
+        playlist_title = clean_filename(playlist.title or "YouTube_Playlist")
+        playlist_folder = os.path.join(self.download_path, playlist_title)
+        os.makedirs(playlist_folder, exist_ok=True)
+        total_videos = len(playlist.video_urls)
+        self.log(f"Playlist: {playlist_title}")
+        self.log(f"Total videos: {total_videos}")
+        self.log("Mode: Audio only")
+        for index, video_url in enumerate(playlist.video_urls, start=1):
+            try:
+                self.set_status(f"Downloading audio {index}/{total_videos}")
+                self.log(f"Downloading {index}/{total_videos}: {video_url}")
+                yt = YouTube(video_url, on_progress_callback=self.on_progress)
+                self._download_audio(yt, playlist_folder, prefix=f"{index:02d}_")
+                self.log(f"Done: {yt.title}")
+            except Exception as e:
+                self.log(f"Failed: {video_url}")
+                self.log(f"Reason: {e}")
+        self.progress["value"] = 100
+        self.set_percent(100)
+
+    def _download_audio(self, yt, output_folder, prefix=""):
+        audio_stream = (yt.streams
+            .filter(only_audio=True)
+            .order_by("abr").desc().first())
+        if audio_stream is None:
+            raise Exception("No audio stream found.")
+        title = clean_filename(yt.title)
+        temp_audio = os.path.join(output_folder, f"{prefix}temp_audio.mp4")
+        output_file = os.path.join(output_folder, f"{prefix}{title}.mp3")
+        self.set_status("Downloading audio...")
+        audio_stream.download(output_path=output_folder, filename=f"{prefix}temp_audio.mp4")
+        self.set_status("Converting to MP3...")
+        self.root.update_idletasks()
+        ffmpeg_bin = get_ffmpeg_path() or "ffmpeg"
+        subprocess.run([ffmpeg_bin, "-y",
+            "-i", temp_audio,
+            "-codec:a", "libmp3lame", "-qscale:a", "2", output_file],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        if os.path.exists(temp_audio):
+            os.remove(temp_audio)
 
     def on_progress(self, stream, chunk, bytes_remaining):
         try:

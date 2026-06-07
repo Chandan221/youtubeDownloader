@@ -1,6 +1,6 @@
 # YouTube Downloader
 
-[![Version](https://img.shields.io/badge/version-0.0.1-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.0.2-blue.svg)]()
 
 A modern desktop application for downloading YouTube videos and playlists in high quality (up to 4K). Built with Python, `pytubefix`, and `tkinter`.
 
@@ -9,6 +9,7 @@ A modern desktop application for downloading YouTube videos and playlists in hig
 ## Features
 
 - Download single videos or entire playlists
+- Audio-only download (MP3) from any video or playlist
 - Quality selection (up to 4K / 2160p)
 - Automatic video + audio merging via FFmpeg
 - Dark / light theme toggle
@@ -19,9 +20,14 @@ A modern desktop application for downloading YouTube videos and playlists in hig
 
 ## Download
 
-**Latest release: v0.0.1**
+**Latest release: v0.0.2** (adds audio-only MP3 download)
 
-Download the pre-built executable from the [releases](https://github.com/Chandan221/youtubeDownloader/releases) page or grab it directly from `dist/YouTube Downloader.exe`.
+| Version | Highlights |
+|---------|------------|
+| [v0.0.2](https://github.com/Chandan221/youtubeDownloader/releases/tag/v0.0.2) | Audio-only MP3 download, dark/light theme, app icon |
+| [v0.0.1](https://github.com/Chandan221/youtubeDownloader/releases/tag/v0.0.1) | Initial release — video & playlist downloads, FFmpeg merge |
+
+Download the pre-built executable from the [releases](https://github.com/Chandan221/youtubeDownloader/releases) page or grab the latest from `dist/YouTube Downloader.exe`.
 
 ### System Requirements
 
@@ -38,7 +44,7 @@ Download the pre-built executable from the [releases](https://github.com/Chandan
 3. Double-click the `.exe` to launch
 4. Paste a YouTube video or playlist URL
 5. Click **Fetch Qualities** to see available resolutions
-6. Select your desired quality
+6. Select your desired quality (or check **Audio only (MP3)** for audio download)
 7. Optionally change the download folder via **Browse**
 8. Click **Download Now** to start
 
@@ -80,10 +86,11 @@ youtubeDownloader/
 │   ├── playlistyoutube.py    # Playlist downloader
 │   └── testyoutube.py        # Simple progressive downloader
 ├── dist/
-│   └── YouTube Downloader.exe  # v0.0.1 — Pre-built standalone executable
+│   └── YouTube Downloader.exe  # v0.0.2 — Pre-built standalone executable
 ├── .gitignore
 ├── YouTube Downloader.spec    # PyInstaller config
 ├── ytd-icon.png              # Application icon
+├── ytd-icon.ico              # Icon for Windows executable
 └── README.md
 ```
 
@@ -95,7 +102,7 @@ youtubeDownloader/
 | `src/highresyoutube.py` | Simplified HD downloader for single videos |
 | `src/playlistyoutube.py` | Playlist-focused downloader with activity log |
 | `src/testyoutube.py` | Minimal progressive-stream downloader |
-| `dist/YouTube Downloader.exe` | v0.0.1 — Pre-built standalone executable |
+| `dist/YouTube Downloader.exe` | v0.0.2 — Pre-built standalone executable |
 
 ## Notes
 
