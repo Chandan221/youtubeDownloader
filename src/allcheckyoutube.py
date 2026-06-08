@@ -7,6 +7,14 @@ import re
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+import urllib.request
+from io import BytesIO
+
+try:
+    from PIL import Image, ImageTk
+    _has_pil = True
+except ImportError:
+    _has_pil = False
 
 
 def resource_path(relative_path):
@@ -86,45 +94,47 @@ def clean_filename(name):
 
 class Themes:
     DARK = {
-        "bg": "#0f0f1a",
-        "card": "#18182b",
-        "card_hover": "#1f1f38",
-        "input": "#232340",
-        "input_focus": "#2a2a50",
-        "primary": "#7c5cfc",
-        "primary_hover": "#9175ff",
+        "bg": "#1c1b1f",
+        "card": "#2b2930",
+        "card_hover": "#333138",
+        "input": "#38353e",
+        "input_focus": "#423f4a",
+        "primary": "#d0bcff",
+        "primary_hover": "#dccaff",
         "secondary": "#00d4aa",
+        "tertiary": "#efb8c8",
         "success": "#00d4aa",
-        "text": "#eeeff6",
-        "text_secondary": "#8888aa",
-        "text_muted": "#55557a",
-        "border": "#2a2a4a",
-        "border_focus": "#7c5cfc",
-        "progress_bg": "#232340",
-        "progress_fill": "#7c5cfc",
-        "toggle_bg": "#232340",
-        "toggle_active": "#7c5cfc",
-        "toggle_knob": "#eeeff6",
+        "text": "#e6e1e5",
+        "text_secondary": "#cac4d0",
+        "text_muted": "#938f99",
+        "border": "#4a4458",
+        "border_focus": "#d0bcff",
+        "progress_bg": "#38353e",
+        "progress_fill": "#d0bcff",
+        "toggle_bg": "#4a4458",
+        "toggle_active": "#d0bcff",
+        "toggle_knob": "#e6e1e5",
     }
     LIGHT = {
-        "bg": "#f0f2f7",
-        "card": "#ffffff",
-        "card_hover": "#f8f9ff",
-        "input": "#e8eaef",
-        "input_focus": "#dddff0",
-        "primary": "#7c5cfc",
-        "primary_hover": "#6a4de6",
+        "bg": "#fdf8fd",
+        "card": "#f3edf7",
+        "card_hover": "#e8e2ed",
+        "input": "#e7e0ec",
+        "input_focus": "#ddd6e6",
+        "primary": "#6750a4",
+        "primary_hover": "#7c64b8",
         "secondary": "#00b894",
+        "tertiary": "#7d5260",
         "success": "#00b894",
-        "text": "#1a1a2e",
-        "text_secondary": "#6b6b8a",
-        "text_muted": "#9999b3",
-        "border": "#d8dae5",
-        "border_focus": "#7c5cfc",
-        "progress_bg": "#e8eaef",
-        "progress_fill": "#7c5cfc",
-        "toggle_bg": "#d8dae5",
-        "toggle_active": "#7c5cfc",
+        "text": "#1d1b20",
+        "text_secondary": "#49454f",
+        "text_muted": "#79747e",
+        "border": "#cac4d0",
+        "border_focus": "#6750a4",
+        "progress_bg": "#e7e0ec",
+        "progress_fill": "#6750a4",
+        "toggle_bg": "#cac4d0",
+        "toggle_active": "#6750a4",
         "toggle_knob": "#ffffff",
     }
     @classmethod
@@ -132,8 +142,8 @@ class Themes:
         return cls.DARK if name == "dark" else cls.LIGHT
 
 
-FONT = "Segoe UI"
-FONT_MONO = "Consolas"
+FONT = "Segoe UI Variable Display, Segoe UI"
+FONT_MONO = "Cascadia Code, Consolas"
 
 
 def font_spec(size=10, weight="normal"):
@@ -145,9 +155,9 @@ class ThemeToggle(tk.Frame):
         super().__init__(parent, cursor="hand2")
         self.on_toggle = on_toggle
         self.theme_name = initial_theme
-        self.track_w = 40
-        self.track_h = 20
-        self.knob_r = 7
+        self.track_w = 44
+        self.track_h = 24
+        self.knob_r = 9
         self.configure(width=self.track_w, height=self.track_h)
         self.canvas = tk.Canvas(self, width=self.track_w, height=self.track_h,
             highlightthickness=0, bd=0)
@@ -172,11 +182,55 @@ class ThemeToggle(tk.Frame):
             fill=t["toggle_knob"], outline=t["toggle_knob"], width=0)
 
 
+class RoundedCard(tk.Frame):
+    def __init__(self, parent, radius=16, bg_color="#2b2930", parent_bg="#1c1b1f", **kwargs):
+        super().__init__(parent, bg=parent_bg, highlightthickness=0, bd=0, **kwargs)
+        self._radius = radius
+        self._bg_color = bg_color
+        self._parent_bg = parent_bg
+
+        self._canvas = tk.Canvas(self, highlightthickness=0, bd=0, bg=parent_bg)
+        self._canvas._is_rounding_canvas = True
+        self._canvas.pack(fill="both", expand=True)
+
+        self.bind("<Configure>", self._redraw)
+        self._redraw()
+
+    def recolor(self, bg_color, parent_bg):
+        self._bg_color = bg_color
+        self._parent_bg = parent_bg
+        self.configure(bg=parent_bg)
+        self._canvas.configure(bg=parent_bg)
+        self._redraw()
+
+    def _redraw(self, event=None):
+        self._canvas.delete("all")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < 1 or h < 1:
+            return
+        r = min(self._radius, w // 4, h // 4)
+        self._draw_rounded_rect(0, 0, w, h, r, fill=self._bg_color, outline="")
+
+    def _draw_rounded_rect(self, x1, y1, x2, y2, r, **kwargs):
+        kwargs.setdefault('width', 0)
+        c = self._canvas
+        c.create_arc(x1, y1, x1 + 2 * r, y1 + 2 * r, start=90, extent=90, **kwargs)
+        c.create_arc(x2 - 2 * r, y1, x2, y1 + 2 * r, start=0, extent=90, **kwargs)
+        c.create_arc(x1, y2 - 2 * r, x1 + 2 * r, y2, start=180, extent=90, **kwargs)
+        c.create_arc(x2 - 2 * r, y2 - 2 * r, x2, y2, start=270, extent=90, **kwargs)
+        c.create_rectangle(x1 + r, y1, x2 - r, y1 + 2 * r, **kwargs)
+        c.create_rectangle(x1 + r, y2 - 2 * r, x2 - r, y2, **kwargs)
+        c.create_rectangle(x1, y1 + r, x1 + 2 * r, y2 - r, **kwargs)
+        c.create_rectangle(x2 - 2 * r, y1 + r, x2, y2 - r, **kwargs)
+        c.create_rectangle(x1 + r, y1 + r, x2 - r, y2 - r, **kwargs)
+
+
 class YouTubeDownloaderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("YouTube Downloader")
-        self.root.geometry("820x680")
+        self.root.geometry("860x740")
         self.root.resizable(False, False)
 
         self.theme_name = "dark"
@@ -187,6 +241,7 @@ class YouTubeDownloaderApp:
         self.video_streams = []
         self.is_playlist = tk.BooleanVar(value=False)
         self.audio_only = tk.BooleanVar(value=False)
+        self.thumb_photo = None
 
         self.root.configure(bg=self.colors["bg"])
         self.set_icon()
@@ -219,7 +274,12 @@ class YouTubeDownloaderApp:
             cls = child.winfo_class()
 
             if cls == "Frame":
-                child.configure(bg=self.colors["card"] if role == "card" else self.colors["bg"])
+                if role == "rounded_card":
+                    child.recolor(self.colors["card"], self.colors["bg"])
+                elif role == "card":
+                    child.configure(bg=self.colors["card"])
+                else:
+                    child.configure(bg=self.colors["bg"])
 
             elif cls == "Label":
                 label_role = getattr(child, "_label_role", "normal")
@@ -229,14 +289,16 @@ class YouTubeDownloaderApp:
                     child.configure(bg=self.colors["card"], fg=self.colors["text_secondary"])
                 elif label_role == "percent":
                     child.configure(bg=self.colors["card"], fg=self.colors["primary"])
+                elif label_role == "title":
+                    child.configure(bg=self.colors["card"], fg=self.colors["text"])
                 else:
-                    p_bg = self.colors["card"] if getattr(child.master, "_bg_role", None) == "card" else self.colors["bg"]
+                    p_bg = self.colors["card"] if getattr(child.master, "_bg_role", None) in ("card", "rounded_card") else self.colors["bg"]
                     child.configure(bg=p_bg, fg=self.colors["text"])
 
             elif cls == "Button":
                 btn_role = getattr(child, "_btn_role", "primary")
                 if btn_role == "primary":
-                    child.configure(bg=self.colors["primary"], fg="#ffffff",
+                    child.configure(bg=self.colors["primary"], fg="#1c1b1f",
                         activebackground=self.colors["primary_hover"])
                 elif btn_role == "secondary":
                     child.configure(bg=self.colors["secondary"], fg=self.colors["bg"],
@@ -260,16 +322,19 @@ class YouTubeDownloaderApp:
                     highlightbackground=self.colors["border"])
 
             elif cls == "Canvas":
-                try:
-                    parent_role = getattr(child.master, "_bg_role", None)
-                    child.configure(bg=self.colors["card"] if parent_role == "card" else self.colors["bg"])
-                except Exception:
-                    pass
+                if not getattr(child, "_is_rounding_canvas", False):
+                    try:
+                        parent_role = getattr(child.master, "_bg_role", None)
+                        child.configure(bg=self.colors["card"] if parent_role == "card" else self.colors["bg"])
+                    except Exception:
+                        pass
 
             elif cls == "Checkbutton":
-                child.configure(bg=self.colors["card"], fg=self.colors["text"],
+                p_role = getattr(child.master, "_bg_role", None)
+                p_bg = self.colors["card"] if p_role in ("card", "rounded_card") else self.colors["bg"]
+                child.configure(bg=p_bg, fg=self.colors["text"],
                     selectcolor=self.colors["input"],
-                    activebackground=self.colors["card"],
+                    activebackground=p_bg,
                     activeforeground=self.colors["text"])
 
             self._recolor_all(child)
@@ -289,7 +354,7 @@ class YouTubeDownloaderApp:
             fieldbackground=[("focus", c["input_focus"])])
         self.style.configure("TProgressbar",
             background=c["progress_fill"], troughcolor=c["progress_bg"],
-            borderwidth=0, thickness=8)
+            borderwidth=0, thickness=10)
 
     def _make_card(self, parent, **kwargs):
         f = tk.Frame(parent, **kwargs)
@@ -320,25 +385,25 @@ class YouTubeDownloaderApp:
 
     def build_header(self):
         header = self._make_bg(self.root)
-        header.pack(fill="x", padx=28, pady=(22, 8))
+        header.pack(fill="x", padx=28, pady=(24, 12))
 
         left = self._make_bg(header)
         left.pack(side="left")
 
         self._label(left, "\U0001F3AC YouTube Downloader", "heading",
-            font=font_spec(18, "bold")).pack(anchor="w")
+            font=font_spec(22, "bold")).pack(anchor="w")
 
-        self._label(left, "Download videos & playlists in HD quality", "secondary",
-            font=font_spec(10)).pack(anchor="w")
+        self._label(left, "Download videos, playlists & audio", "secondary",
+            font=font_spec(12)).pack(anchor="w")
 
         right = self._make_bg(header)
-        right.pack(side="right")
+        right.pack(side="right", pady=(4, 0))
 
         self.theme_toggle = ThemeToggle(right, self.on_theme_toggle, self.theme_name)
         self.theme_toggle.pack(side="right", padx=(0, 6))
 
         self.theme_label = self._label(right, "Dark", "secondary",
-            font=font_spec(10))
+            font=font_spec(11))
         self.theme_label.pack(side="right", padx=(0, 6))
 
     def on_theme_toggle(self, theme_name):
@@ -355,15 +420,20 @@ class YouTubeDownloaderApp:
             self.quality_combo.set("")
 
     def build_section_card(self, parent, padding=16):
-        card = self._make_card(parent,
-            highlightbackground=self.colors["border"], highlightthickness=1)
-        card.pack(fill="x", padx=28, pady=(0, 8), ipady=padding)
+        card = RoundedCard(parent, radius=18,
+            bg_color=self.colors["card"], parent_bg=self.colors["bg"])
+        card._bg_role = "rounded_card"
+        card.pack(fill="x", padx=28, pady=(0, 12), ipady=padding)
         return card
 
     def build_main_card(self):
-        card = self.build_section_card(self.root, padding=14)
+        card = self.build_section_card(self.root, padding=10)
 
         self.build_url_row(card)
+        self.thumb_row = self._make_card(card)
+        self.thumb_row.pack(fill="x", padx=20, pady=(6, 0))
+        self.thumb_row.pack_forget()
+
         self.build_checkbox_row(card)
         self.build_quality_row(card)
         self.build_folder_row(card)
@@ -371,35 +441,109 @@ class YouTubeDownloaderApp:
 
     def build_url_row(self, parent):
         row = self._make_card(parent)
-        row.pack(fill="x", padx=20, pady=(10, 2))
+        row.pack(fill="x", padx=20, pady=(12, 2))
 
-        self._label(row, "URL", "normal",
-            font=font_spec(11, "bold")).pack(anchor="w", pady=(0, 4))
+        self._label(row, "YouTube URL", "normal",
+            font=font_spec(12, "bold")).pack(anchor="w", pady=(0, 6))
 
         input_frame = self._make_card(row)
         input_frame.pack(fill="x")
 
         self.url_entry = tk.Entry(input_frame,
-            font=font_spec(12),
+            font=font_spec(13),
             bg=self.colors["input"], fg=self.colors["text"],
             insertbackground=self.colors["primary"],
             relief="flat", bd=0,
             highlightthickness=2,
             highlightbackground=self.colors["border"],
             highlightcolor=self.colors["border_focus"])
-        self.url_entry.pack(side="left", fill="x", expand=True, ipady=10, ipadx=14)
+        self.url_entry.pack(side="left", fill="x", expand=True, ipady=12, ipadx=16)
         self.url_entry.bind("<FocusIn>", lambda e: self.url_entry.configure(highlightbackground=self.colors["border_focus"]))
         self.url_entry.bind("<FocusOut>", lambda e: self.url_entry.configure(highlightbackground=self.colors["border"]))
 
-        fetch_btn = self._btn(input_frame, "Fetch Qualities", "secondary",
+        fetch_btn = self._btn(input_frame, "Fetch", "secondary",
             command=self.fetch_qualities,
-            font=font_spec(10, "bold"),
-            relief="flat", bd=0, padx=22, pady=10, cursor="hand2")
-        fetch_btn.pack(side="right", padx=(10, 0))
+            font=font_spec(11, "bold"),
+            relief="flat", bd=0, padx=26, pady=12, cursor="hand2")
+        fetch_btn.pack(side="right", padx=(12, 0))
+
+    def _clear_thumbnail(self):
+        for w in self.thumb_row.winfo_children():
+            w.destroy()
+        self.thumb_row.pack_forget()
+        self.thumb_photo = None
+
+    def _load_thumbnail(self, yt):
+        self._clear_thumbnail()
+        try:
+            url = yt.thumbnail_url
+            if not url:
+                return
+
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = resp.read()
+
+            if not _has_pil:
+                return
+
+            img = Image.open(BytesIO(data))
+            max_w = 160
+            w, h = img.size
+            if w > max_w:
+                ratio = max_w / w
+                img = img.resize((max_w, int(h * ratio)), Image.LANCZOS)
+
+            self.thumb_photo = ImageTk.PhotoImage(img)
+
+            thumb_label = tk.Label(self.thumb_row, image=self.thumb_photo,
+                bg=self.colors["card"], relief="flat", bd=0)
+            thumb_label._label_role = "normal"
+            thumb_label.pack(side="left", padx=(0, 14))
+
+            info_frame = self._make_card(self.thumb_row)
+            info_frame.pack(side="left", fill="x", expand=True)
+
+            title = yt.title or ""
+            if len(title) > 80:
+                title = title[:77] + "..."
+
+            title_lbl = self._label(info_frame, title, "title",
+                font=font_spec(12, "bold"), anchor="w", wraplength=500)
+            title_lbl.pack(fill="x", pady=(0, 2))
+
+            meta_parts = []
+            try:
+                if yt.author:
+                    meta_parts.append(yt.author)
+            except Exception:
+                pass
+            try:
+                if yt.length:
+                    mins, secs = divmod(int(yt.length), 60)
+                    meta_parts.append(f"{mins}:{secs:02d}")
+            except Exception:
+                pass
+            try:
+                if yt.views:
+                    meta_parts.append(f"{yt.views:,} views")
+            except Exception:
+                pass
+
+            if meta_parts:
+                meta_lbl = self._label(info_frame, "  |  ".join(meta_parts), "secondary",
+                    font=font_spec(10))
+                meta_lbl.pack(fill="x")
+
+            self.thumb_row.pack(fill="x", padx=20, pady=(6, 2))
+
+        except Exception:
+            pass
 
     def build_checkbox_row(self, parent):
         row = self._make_card(parent)
-        row.pack(fill="x", padx=20, pady=(6, 2))
+        row.pack(fill="x", padx=20, pady=(4, 2))
 
         self.playlist_cb = tk.Checkbutton(row,
             text="This URL is a playlist", variable=self.is_playlist,
@@ -409,7 +553,7 @@ class YouTubeDownloaderApp:
             activebackground=self.colors["card"],
             activeforeground=self.colors["text"],
             relief="flat", bd=0, cursor="hand2",
-            padx=8, pady=6)
+            padx=8, pady=8)
         self.playlist_cb.pack(side="left")
 
         self.audio_cb = tk.Checkbutton(row,
@@ -421,80 +565,81 @@ class YouTubeDownloaderApp:
             activebackground=self.colors["card"],
             activeforeground=self.colors["text"],
             relief="flat", bd=0, cursor="hand2",
-            padx=8, pady=6)
-        self.audio_cb.pack(side="left", padx=(10, 0))
+            padx=8, pady=8)
+        self.audio_cb.pack(side="left", padx=(14, 0))
 
     def build_quality_row(self, parent):
         row = self._make_card(parent)
         row.pack(fill="x", padx=20, pady=(8, 4))
 
         self._label(row, "Quality", "normal",
-            font=font_spec(11, "bold")).pack(side="left")
+            font=font_spec(12, "bold")).pack(side="left")
 
         self.quality_combo = ttk.Combobox(row,
-            width=52, state="readonly", font=font_spec(11))
-        self.quality_combo.pack(side="right", fill="x", expand=True, padx=(12, 0))
+            width=52, state="readonly", font=font_spec(12))
+        self.quality_combo.pack(side="right", fill="x", expand=True, padx=(16, 0))
 
     def build_folder_row(self, parent):
         row = self._make_card(parent)
         row.pack(fill="x", padx=20, pady=(8, 4))
 
         self._label(row, "Save to", "normal",
-            font=font_spec(11, "bold")).pack(side="left")
+            font=font_spec(12, "bold")).pack(side="left")
 
         folder_btn = self._btn(row, "\U0001F4C2  Browse", "browse",
             command=self.select_folder,
-            font=font_spec(10, "bold"),
-            relief="flat", bd=0, padx=16, pady=6, cursor="hand2")
+            font=font_spec(11, "bold"),
+            relief="flat", bd=0, padx=18, pady=8, cursor="hand2")
         folder_btn.pack(side="right")
 
-        self.path_label = self._label(row, self._shorten_path(self.download_path, 50),
-            "secondary", font=font_spec(10), anchor="e", padx=10)
+        self.path_label = self._label(row, self._shorten_path(self.download_path, 55),
+            "secondary", font=font_spec(11), anchor="e", padx=12)
         self.path_label.pack(side="right", fill="x", expand=True)
 
     def build_download_btn(self, parent):
         row = self._make_card(parent)
-        row.pack(fill="x", padx=20, pady=(10, 6))
+        row.pack(fill="x", padx=20, pady=(10, 8))
 
         self.download_button = self._btn(row, "\u25BC  Download Now", "primary",
             command=self.start_download,
-            font=font_spec(13, "bold"),
-            relief="flat", bd=0, padx=30, pady=14, cursor="hand2")
+            font=font_spec(14, "bold"),
+            relief="flat", bd=0, padx=30, pady=16, cursor="hand2")
         self.download_button.pack(fill="x")
 
     def build_progress_card(self):
         card = self.build_section_card(self.root, padding=10)
 
         self.progress = ttk.Progressbar(card, orient="horizontal",
-            length=740, mode="determinate", style="TProgressbar")
-        self.progress.pack(padx=20, pady=(10, 4), fill="x")
+            length=800, mode="determinate", style="TProgressbar")
+        self.progress.pack(padx=20, pady=(12, 6), fill="x")
 
         status_frame = self._make_card(card)
         status_frame.pack(fill="x", padx=20)
 
         self.status_label = self._label(status_frame, "Ready", "secondary",
-            font=font_spec(10), anchor="w")
+            font=font_spec(11), anchor="w")
         self.status_label.pack(side="left")
 
         self.percent_label = self._label(status_frame, "", "percent",
-            font=font_spec(10, "bold"), anchor="e")
+            font=font_spec(14, "bold"), anchor="e")
         self.percent_label.pack(side="right")
 
     def build_log_card(self):
-        card = self._make_card(self.root,
-            highlightbackground=self.colors["border"], highlightthickness=1)
-        card.pack(fill="both", expand=True, padx=28, pady=(0, 24), ipady=4)
+        card = RoundedCard(self.root, radius=18,
+            bg_color=self.colors["card"], parent_bg=self.colors["bg"])
+        card._bg_role = "rounded_card"
+        card.pack(fill="both", expand=True, padx=28, pady=(0, 28), ipady=4)
 
         header = self._make_card(card)
-        header.pack(fill="x", padx=18, pady=(10, 0))
+        header.pack(fill="x", padx=20, pady=(12, 0))
 
         self._label(header, "Activity Log", "normal",
-            font=font_spec(11, "bold")).pack(side="left")
+            font=font_spec(12, "bold")).pack(side="left")
 
         self.clear_btn = self._btn(header, "Clear", "clear",
             command=self.clear_log,
-            font=font_spec(9, "bold"),
-            relief="flat", bd=0, padx=12, pady=3, cursor="hand2")
+            font=font_spec(10, "bold"),
+            relief="flat", bd=0, padx=14, pady=4, cursor="hand2")
         self.clear_btn.pack(side="right")
 
         self.log_box = tk.Text(card, height=7,
@@ -504,8 +649,8 @@ class YouTubeDownloaderApp:
             relief="flat", bd=0, highlightthickness=2,
             highlightbackground=self.colors["border"],
             highlightcolor=self.colors["border_focus"],
-            padx=14, pady=10)
-        self.log_box.pack(fill="both", expand=True, padx=18, pady=(6, 14))
+            padx=16, pady=12)
+        self.log_box.pack(fill="both", expand=True, padx=20, pady=(8, 16))
 
     def _shorten_path(self, path, max_len):
         if len(path) <= max_len:
@@ -528,8 +673,15 @@ class YouTubeDownloaderApp:
             fg=self.colors["success"] if is_success else self.colors["text_secondary"])
         self.root.update_idletasks()
 
-    def set_percent(self, value):
-        self.percent_label.config(text=f"{value}%" if value > 0 else "")
+    def set_percent(self, value, size_text=""):
+        text = ""
+        if value > 0:
+            text = f"{value}%"
+            if size_text:
+                text = f"{size_text}  ({value}%)"
+        elif value == 0 and size_text:
+            text = size_text
+        self.percent_label.config(text=text)
 
     def fetch_qualities(self):
         url = self.url_entry.get().strip()
@@ -540,6 +692,7 @@ class YouTubeDownloaderApp:
             self.set_status("Fetching information...")
             self.set_percent(0)
             self.progress["value"] = 0
+            self._clear_thumbnail()
 
             if self.is_playlist.get():
                 playlist = Playlist(url)
@@ -560,6 +713,7 @@ class YouTubeDownloaderApp:
                 size_mb = round(audio_stream.filesize / (1024 * 1024), 2)
                 self.quality_combo.set(f"Audio Only | {audio_stream.abr} | {size_mb} MB")
                 self.quality_combo.configure(state="disabled")
+                self._load_thumbnail(self.yt)
                 self.set_status(f"Audio info loaded for: {self.yt.title}", True)
                 return
 
@@ -583,6 +737,7 @@ class YouTubeDownloaderApp:
             self.quality_combo["values"] = quality_options
             self.quality_combo.current(0)
             self.quality_combo.configure(state="readonly")
+            self._load_thumbnail(self.yt)
             self.set_status(f"Loaded {len(quality_options)} quality options for: {self.yt.title}", True)
 
         except Exception as e:
@@ -593,7 +748,7 @@ class YouTubeDownloaderApp:
         folder = filedialog.askdirectory()
         if folder:
             self.download_path = folder
-            self.path_label.config(text=self._shorten_path(folder, 50))
+            self.path_label.config(text=self._shorten_path(folder, 55))
 
     def start_download(self):
         url = self.url_entry.get().strip()
@@ -633,7 +788,7 @@ class YouTubeDownloaderApp:
             self.set_status("Download failed")
         finally:
             self.download_button.config(state="normal",
-                bg=self.colors["primary"], text="\u25BC  Download Now")
+                bg=self.colors["primary"], fg="#1c1b1f", text="\u25BC  Download Now")
 
     def download_playlist(self, playlist_url, selected_quality):
         playlist = Playlist(playlist_url)
@@ -751,11 +906,18 @@ class YouTubeDownloaderApp:
 
     def on_progress(self, stream, chunk, bytes_remaining):
         try:
-            total_size = stream.filesize
-            downloaded = total_size - bytes_remaining
-            percentage = int((downloaded / total_size) * 100)
-            self.progress["value"] = percentage
-            self.set_percent(percentage)
+            total_size = getattr(stream, 'filesize', None)
+            if total_size and total_size > 0:
+                downloaded = total_size - bytes_remaining
+                percentage = int((downloaded / total_size) * 100)
+                self.progress["value"] = percentage
+                dl_mb = downloaded / (1024 * 1024)
+                total_mb = total_size / (1024 * 1024)
+                self.set_percent(percentage, f"{dl_mb:.1f} MB / {total_mb:.1f} MB")
+            else:
+                percentage = 50
+                self.progress["value"] = percentage
+                self.set_percent(percentage, "Downloading...")
             self.root.update_idletasks()
         except Exception:
             pass
